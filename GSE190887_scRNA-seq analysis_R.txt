@@ -1,0 +1,681 @@
+## Dataset: GSE190887
+## Disease: Healthy/ IRI / UUO
+
+## =========================
+Step 1: Load required R packages
+library(Seurat)
+library(Matrix)
+library(dplyr)
+library(ggplot2)
+
+## =========================
+Step 2: Set working directory
+setwd("C:/Users/user/Desktop/Single cell RNA seq analysis/GSE190887")
+
+## =========================
+Step 3: Load metadata CSV
+metadata <- read.csv(
+  "GSE190887_meta_cell_type_sample.csv",
+  stringsAsFactors = FALSE
+)
+
+## =========================
+Step 4: Inspect metadata dimensions and structure
+dim(metadata)
+head(metadata)
+colnames(metadata)
+
+## =========================
+Step 5: Set row names and check duplicates in metadata
+rownames(metadata) <- metadata$X
+metadata$X <- NULL
+anyDuplicated(rownames(metadata))
+
+## =========================
+Step 6: Preview raw count matrix lines
+count_preview <- readLines(
+  "GSM5733424_count.MM.txt",
+  n = 10
+)
+
+count_preview
+
+## =========================
+Step 7: Test load count data subset and inspect summary
+count_test <- read.csv(
+  "GSM5733424_count.MM.txt",
+  header = FALSE,
+  nrows = 10000
+)
+
+head(count_test)
+
+dim(count_test)
+
+colnames(count_test) <- c("gene", "cell", "count")
+
+summary(count_test)
+
+max(count_test$gene)
+max(count_test$cell)
+
+list.files()
+
+## =========================
+Step 8: Preview raw gene annotation lines
+gene_preview <- readLines(
+  "GSE190887_gene_name_annotate.txt",
+  n = 10
+)
+
+gene_preview
+
+## =========================
+Step 9: Test load gene annotations as TSV
+gene_annotate <- read.table(
+  "GSE190887_gene_name_annotate.txt",
+  header = FALSE,
+  sep = "\t",
+  stringsAsFactors = FALSE
+)
+
+dim(gene_annotate)
+
+## =========================
+Step 10: Inspect initial gene annotation data
+head(gene_annotate)
+colnames(gene_annotate)
+
+## =========================
+Step 11: Reload gene annotations as CSV
+gene_annotate <- read.csv(
+  "GSE190887_gene_name_annotate.txt",
+  header = FALSE,
+  stringsAsFactors = FALSE
+)
+
+## =========================
+Step 12: Assign column names to gene annotations
+colnames(gene_annotate) <- c(
+  "gene_id",
+  "biotype",
+  "region",
+  "gene_name",
+  "gene_index"
+)
+
+## =========================
+Step 13: Check gene annotation dimensions and Verify gene index range and uniqueness
+dim(gene_annotate)
+range(gene_annotate$gene_index)
+anyDuplicated(gene_annotate$gene_index)
+
+## =========================
+Step 14: Load full count data table and cell barcode annotations
+counts_df <- read.csv(
+  "GSM5733424_count.MM.txt",
+  header = FALSE
+)
+
+colnames(counts_df) <- c(
+  "gene",
+  "cell",
+  "count"
+)
+
+cell_annotate <- read.csv(
+  "GSE190887_cell_annotate.txt",
+  header = FALSE,
+  stringsAsFactors = FALSE
+)
+
+## =========================
+Step 16: Inspect cell annotation structure and Match metadata cell IDs with annotation barcodes
+
+dim(cell_annotate)
+head(cell_annotate)
+colnames(cell_annotate)
+
+cell_ids <- cell_annotate$V1
+length(cell_ids)
+anyDuplicated(cell_ids)
+sum(rownames(metadata) %in% cell_ids)
+keep_cells <- match(rownames(metadata), cell_ids)
+length(keep_cells)
+any(is.na(keep_cells))
+
+## =========================
+Step 17: Map new cell indices to count table and Filter counts for matched cells
+counts_df$cell_new <- match(counts_df$cell, keep_cells)
+counts_df <- counts_df[!is.na(counts_df$cell_new), ]
+dim(counts_df)
+
+## =========================
+Step 21: Inspect mapped counts summary and Verify gene index 
+summary(counts_df$cell_new)
+max(counts_df$cell_new)
+length(unique(counts_df$cell_new))
+max(counts_df$gene)
+min(counts_df$gene)
+
+anyDuplicated(gene_annotate$gene_index)
+
+## =========================
+Step 22: Construct sparse count matrix
+library(Matrix)
+
+counts_matrix <- sparseMatrix(
+  i = counts_df$gene,
+  j = counts_df$cell_new,
+  x = counts_df$count,
+  dims = c(
+    nrow(gene_annotate),
+    nrow(metadata)
+  )
+)
+
+## =========================
+Step 23: Assign gene IDs as matrix row names
+rownames(counts_matrix) <- gene_annotate$gene_id
+head(rownames(counts_matrix))
+tail(rownames(counts_matrix))
+anyDuplicated(rownames(counts_matrix))
+
+## =========================
+Step 24: Initialize Seurat object
+seurat_obj <- CreateSeuratObject(
+  counts = counts_matrix,
+  project = "GSE190887",
+  min.cells = 0,
+  min.features = 0
+)
+
+## =========================
+Step 25: Add sample metadata to Seurat object
+seurat_obj <- AddMetaData(
+  object = seurat_obj,
+  metadata = metadata
+)
+colnames(seurat_obj@meta.data)
+head(seurat_obj@meta.data)
+
+## =========================
+Step 26: Search for mitochondrial genes in annotations
+
+head(
+  gene_annotate[
+    grepl("mt-", gene_annotate$gene_name, ignore.case = TRUE),
+  ],
+  20
+)
+gene_annotate[
+  grepl("mt-", gene_annotate$gene_name, ignore.case = TRUE),
+  c("gene_id", "biotype", "region", "gene_name", "gene_index")
+]
+
+## =========================
+Step 27: Create a mitochondrial feature list
+mt_features <- gene_annotate$gene_id[
+  grepl("^mt-", gene_annotate$gene_name, ignore.case = FALSE)
+]
+length(mt_features)
+head(mt_features)
+tail(mt_features)
+sum(mt_features %in% rownames(seurat_obj))
+
+## =========================
+Step 28: Reformat mitochondrial gene IDs for Seurat compatibility
+mt_features_seurat <- gsub(
+  "_",
+  "-",
+  mt_features
+)
+sum(mt_features_seurat %in% rownames(seurat_obj))
+head(mt_features_seurat)
+
+## =========================
+Step 29: Calculate mitochondrial read percentage (percent.mt)
+seurat_obj[["percent.mt"]] <- PercentageFeatureSet(
+  seurat_obj,
+  features = mt_features_seurat
+)
+head(seurat_obj@meta.data)
+
+## =========================
+Step 30: Inspect QC metric summaries
+summary(seurat_obj$percent.mt)
+summary(seurat_obj$nFeature_RNA)
+summary(seurat_obj$nCount_RNA)
+
+## =========================
+Step 31: Evaluate QC filtering thresholds
+qc_cutoffs <- data.frame(
+  cutoff_nFeature = c(80, 100, 150, 200),
+  cells_removed = sapply(
+    c(80, 100, 150, 200),
+    function(x) sum(seurat_obj$nFeature_RNA < x)
+  )
+)
+
+qc_cutoffs
+data.frame(
+  cutoff_nCount = c(120, 150, 200, 300),
+  cells_removed = sapply(
+    c(120, 150, 200, 300),
+    function(x) sum(seurat_obj$nCount_RNA < x)
+  )
+) 
+sum(seurat_obj$percent.mt > 5)
+
+## =========================
+Step 32: Apply QC filtering criteria
+seurat_obj <- subset(
+  seurat_obj,
+  subset = nFeature_RNA >= 100 &
+           nCount_RNA >= 150 &
+           percent.mt <= 5
+)
+
+## =========================
+Step 33: Check remaining cell count post-QC
+cells_after <- ncol(seurat_obj)
+
+cells_after
+
+## =========================
+Step 34: Plot post-QC violin plots and Summarize post-QC metrics
+VlnPlot(
+  seurat_obj,
+  features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+  ncol = 3,
+  pt.size = 0
+)
+
+summary(seurat_obj$nFeature_RNA)
+summary(seurat_obj$nCount_RNA)
+summary(seurat_obj$percent.mt)
+
+## =========================
+Step 35: Normalization
+seurat_obj <- NormalizeData(
+  seurat_obj,
+  normalization.method = "LogNormalize",
+  scale.factor = 10000,
+  verbose = TRUE
+)
+
+## =========================
+Step 36: Identify highly variable features (HVGs)
+seurat_obj <- FindVariableFeatures(
+  seurat_obj,
+  selection.method = "vst",
+  nfeatures = 5000,
+  verbose = TRUE
+)
+
+## =========================
+Step 37: Scale data and Perform regression
+seurat_obj <- ScaleData(
+  seurat_obj,
+  features = VariableFeatures(seurat_obj),
+  vars.to.regress = c("nCount_RNA", "percent.mt"),
+  verbose = TRUE
+)
+
+## =========================
+Step 38: PCA
+seurat_obj <- RunPCA(
+  seurat_obj,
+  features = VariableFeatures(seurat_obj),
+  npcs = 40,
+  verbose = TRUE
+)
+
+
+## =========================
+Step 38: Generate PCA Elbow plot
+ElbowPlot(
+     seurat_obj,
+     ndims = 40
+ )
+
+## =========================
+Step 39: Compute nearest neighbor 
+seurat_obj <- FindNeighbors(
+  seurat_obj,
+  reduction = "pca",
+  dims = 1:40,
+  k.param = 40,
+  metric = "cosine",
+  verbose = TRUE
+)
+
+## =========================
+Step 40: Run UMAP
+seurat_obj <- RunUMAP(
+  seurat_obj,
+  reduction = "pca",
+  dims = 1:40,
+  n.neighbors = 40,
+  min.dist = 0.01,
+  spread = 2,
+  metric = "cosine",
+  n.epochs = 3000,
+  reduction.name = "umap_paper",
+  reduction.key = "UMAPPAPER_",
+  verbose = TRUE
+)
+
+## =========================
+Step 41: Visualize cell clusters on UMAP
+DimPlot(
+  seurat_obj,
+  reduction = "umap_paper",
+  group.by = "celltype0421",
+  label = TRUE,
+  repel = TRUE,
+  pt.size = 0.8,
+  raster = TRUE
+)
+
+## =========================
+Step 42: Reorder and rename cell type factors
+seurat_obj$celltype0421_ordered <- factor(
+  seurat_obj$celltype0421,
+  levels = c(
+    # Tubular / nephron
+    "PT",
+    "PT-Inj",
+    "PT-AcInj",
+    "PT-R",
+    "PT-FR",
+    "TAL",
+    "DCT",
+    "CNT",
+    "ICA",
+    "ICB",
+    "DTL-ATL",
+    "PC",
+
+    # Glomerular
+    "Pod",
+    
+    # Vascular / stromal
+    "EC",
+    "Fib",
+    "Myofib",
+    
+    # Immune
+    "Mφ",
+    "B/T",
+    
+    # Other
+    "Uro"
+  )
+)
+
+levels(seurat_obj$celltype0421_ordered)[
+  levels(seurat_obj$celltype0421_ordered) == "PT-FR"
+] <- "FR-PT"
+
+## =========================
+Step 43: Generate UMAP plot for paper
+DimPlot(
+  seurat_obj,
+  reduction = "umap_paper",
+  group.by = "celltype0421_ordered",
+  label = TRUE,
+  repel = TRUE,
+  raster = TRUE
+) +
+  NoAxes() +
+  theme(
+    plot.title = element_blank()
+  )
+
+## =========================
+Step 44: Summarize cell numbers per sample and Check the presence of Il33 gene symbol in object
+unique(seurat_obj$sample)
+table(seurat_obj$sample)
+
+"Il33" %in% rownames(seurat_obj)
+
+## =========================
+Step 45: Search Il33 metadata in gene annotations and Extract and Verify Gene ID in Seurat object
+gene_annotate[
+  gene_annotate$gene_name == "Il33",
+  c("gene_id", "gene_name", "biotype", "region")
+]
+
+il33_gene_id <- gene_annotate$gene_id[
+  gene_annotate$gene_name == "Il33"
+]
+
+il33_gene_id
+
+il33_gene_id %in% rownames(seurat_obj)
+
+## =========================
+Step 46: Annotate disease model groups(Health / IRI / UUO)
+seurat_obj$model <- dplyr::case_when(
+  grepl("^IRI_", seurat_obj$sample) ~ "IRI",
+  grepl("^UUO_", seurat_obj$sample) ~ "UUO",
+  seurat_obj$sample == "Health" ~ "Health",
+  TRUE ~ NA_character_
+)
+
+## =========================
+Step 47: Retrieve detailed Il33 annotation records
+il33_info <- gene_annotate[
+  gene_annotate$gene_name == "Il33",
+  c("gene_id", "gene_name", "biotype", "region")
+]
+
+il33_info
+
+## =========================
+Step 48: Format and Confirm Il33 ID for Seurat
+il33_gene_ids <- il33_info$gene_id
+
+il33_gene_ids_seurat <- gsub(
+  "_",
+  "-",
+  il33_gene_ids
+)
+
+il33_gene_ids_seurat
+
+il33_gene_ids_seurat %in% rownames(seurat_obj)
+
+## =========================
+Step 49: Generate Il33 expression DotPlot across cell types
+celltype_order <- c(
+  "PT",
+  "PT-Inj",
+  "PT-AcInj",
+  "PT-R",
+  "FR-PT",
+  "TAL",
+  "DCT",
+  "CNT",
+  "ICA",
+  "ICB",
+  "DTL-ATL",
+  "PC",
+  "Pod",
+  "EC",
+  "Fib",
+  "Myofib",
+  "Mφ",
+  "B/T",
+  "Uro"
+)
+
+# DotPlot
+DotPlot(
+  seurat_obj,
+  features = il33_gene_ids_seurat[1],
+  group.by = "celltype0421_ordered"
+) +
+  scale_x_discrete(labels = "Il33") +
+  scale_y_discrete(limits = rev(celltype_order)) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    axis.text.x = element_text(size = 13),
+    axis.text.y = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 13)
+  )
+
+## =========================
+Step 49: Filter cell types and summarize Il33 expression
+library(dplyr)
+library(ggplot2)
+
+il33_cells <- c("Fib", "Myofib", "Uro")
+
+seurat_il33 <- subset(
+  seurat_obj,
+  subset = celltype0421 %in% il33_cells
+)
+
+seurat_il33$celltype0421 <- factor(
+  seurat_il33$celltype0421,
+  levels = c("Fib", "Myofib", "Uro")
+)
+
+seurat_il33$model <- factor(
+  seurat_il33$model,
+  levels = c("Health", "IRI", "UUO")
+)
+
+il33_expr <- FetchData(
+  seurat_il33,
+  vars = il33_gene_ids_seurat[1]
+)
+
+colnames(il33_expr) <- "Il33"
+
+il33_expr$celltype <- seurat_il33$celltype0421
+il33_expr$model <- seurat_il33$model
+
+il33_summary <- il33_expr %>%
+  group_by(celltype, model) %>%
+  summarise(
+    avg_expression = mean(Il33),
+    pct_expressed = mean(Il33 > 0) * 100,
+    .groups = "drop"
+  )
+
+il33_summary
+
+## =========================
+Step 50: Visualize Il33 expression profile across conditions 
+ggplot(
+  il33_summary,
+  aes(
+    x = model,
+    y = celltype
+  )
+) +
+  geom_point(
+    aes(
+      size = pct_expressed,
+      color = avg_expression
+    )
+  ) +
+  
+  scale_x_discrete(
+    limits = c("Health", "IRI", "UUO"),
+    labels = c(
+      "Health" = "Healthy",
+      "IRI" = "IRI",
+      "UUO" = "UUO"
+    )
+  ) +
+  
+  scale_color_gradientn(
+    colors = c(
+      "#D9D9D9",
+      "#C9C0D8",
+      "#A58CC8",
+      "#8064C9",
+      "#4B32F5",
+      "#1710E8"
+    )
+  ) +
+  
+  scale_size(
+    range = c(2, 10)
+  ) +
+  
+  labs(
+    title = "Il33 Expression",
+    x = NULL,
+    y = NULL,
+    size = "Percent Expressed",
+    color = "Average Expression"
+  ) +
+  
+  theme_classic() +
+  
+  theme(
+    plot.title = element_text(
+      size = 16,
+      face = "bold",
+      hjust = 0.5
+    ),
+    
+    axis.text.x = element_text(
+      size = 13,
+      color = "black"
+    ),
+    
+    axis.text.y = element_text(
+      size = 13,
+      color = "black"
+    ),
+    
+    axis.title = element_blank(),
+    
+    legend.title = element_text(
+      size = 13
+    ),
+    
+    legend.text = element_text(
+      size = 12
+    ),
+    
+    legend.position = "right"
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
