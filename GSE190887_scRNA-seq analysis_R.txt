@@ -1,5 +1,5 @@
 ## Dataset: GSE190887
-## Disease: Healthy/ IRI / UUO
+## Disease: Healthy/ IRI / UUO (Mouse)
 
 ## =========================
 Step 1: Load required R packages
