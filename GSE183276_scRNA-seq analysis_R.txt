@@ -1,0 +1,741 @@
+## Dataset: GSE183276
+## Disease: Ref/ AKI / CKD (Human)
+
+## =========================
+Step 1: Load required R packages
+library(Seurat)
+library(SeuratObject)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+
+## =========================
+Step 2: Set working directory
+setwd("C:/Users/user/Desktop/Single cell RNA seq analysis/GSE183276")
+
+## =========================
+Step 3: Load raw count matrix from RDS
+counts <- readRDS(
+  "GSE183276_Kidney_Healthy-Injury_Cell_Atlas_scCv3_Counts_03282022.RDS"
+)
+
+## =========================
+Step 4: Check the category, dimensions, and size of the counting matrix
+class(counts)
+dim(counts)
+counts[1:5, 1:5]
+object.size(counts)
+
+## =========================
+Step 5: Summarize the original count distribution and sparsity.
+summary(counts@x)
+
+range(counts@x)
+
+quantile(
+  counts@x,
+  probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)
+)
+
+length(counts@x)
+
+length(counts@x) / (as.numeric(nrow(counts)) * as.numeric(ncol(counts)))
+all(counts@x == round(counts@x))
+
+## =========================
+Step 6: Preview count matrix row/column names and non-zero values
+head(rownames(counts), 20)
+head(colnames(counts), 10)
+counts[1:20, 1:10]
+sum(counts@x == 0)
+length(counts@x)
+
+## =========================
+Step 7: Import sample metadata file
+metadata_file <- "C:/Users/user/Desktop/Single cell RNA seq analysis/GSE183276/GSE183276_Kidney_Healthy-Injury_Cell_Atlas_scCv3_Metadata_03282022.txt"
+
+metadata <- read.table(
+  metadata_file,
+  header = TRUE,
+  sep = "\t",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+## =========================
+Step 8: Check metadata dimensions and structure
+dim(metadata)
+colnames(metadata)
+head(metadata)
+head(rownames(metadata))
+head(colnames(counts))
+
+## =========================
+Step 9: Compare cell counts between matrix and metadata
+length(colnames(counts)
+nrow(metadata)
+)
+
+## =========================
+Step 10: Verify barcode alignment between counts and metadata
+all(colnames(counts) %in% rownames(metadata))
+all(colnames(counts) == rownames(metadata))
+
+## =========================
+Step 11: Check sample condition distributions & disease states & cell class and subclass annotations
+table(metadata$condition.l1)
+table(metadata$condition.l2)
+table(metadata$condition.l3)
+
+table(metadata$state.l1)
+table(metadata$state.l2)
+ 
+table(metadata$class)
+table(metadata$subclass.l1)
+
+## =========================
+Step 12: Initialize Seurat object with initial thresholds
+library(Seurat)
+library(SeuratObject)
+library(Matrix)
+library(ggplot2)
+library(dplyr)
+seurat_obj <- CreateSeuratObject(
+  counts = counts,
+  project = "GSE183276",
+  min.cells = 3,
+  min.features = 200
+)
+
+## =========================
+Step 13: Add metadata to Seurat objects
+seurat_obj <- AddMetaData(
+  seurat_obj,
+  metadata = metadata
+)
+seurat_obj
+dim(seurat_obj)
+
+## =========================
+Step 14: Summarize cell QC metrics
+summary(seurat_obj$nFeature_RNA) 
+summary(seurat_obj$nCount_RNA) 
+summary(seurat_obj$percent.mt)
+
+## =========================
+Step 15: Compare Seurat QC values and original metadata
+head(
+  data.frame(
+    Seurat_nCount = seurat_obj$nCount_RNA,
+    Metadata_nCount = metadata$nCount_RNA,
+    Seurat_nFeature = seurat_obj$nFeature_RNA,
+    Metadata_nFeature = metadata$nFeature_RNA
+  )
+)
+
+## =========================
+Step 16: Check exact equality of nCount values
+all.equal(
+  seurat_obj$nCount_RNA,
+  metadata$nCount_RNA
+)
+
+## =========================
+Step 17: Assess the difference between Seurat and metadata indicators.
+summary(seurat_obj$nCount_RNA - metadata$nCount_RNA)
+summary(seurat_obj$nFeature_RNA - metadata$nFeature_RNA)
+
+## =========================
+Step 18: Plot QC metric violin plots
+VlnPlot(
+  seurat_obj,
+  features = c(
+    "nFeature_RNA",
+    "nCount_RNA",
+    "percent.mt"
+  ),
+  ncol = 3,
+  pt.size = 0
+)
+
+## =========================
+Step 19: Scatter plot of nCount vs nFeature and nCount vs mitochondrial percentage
+FeatureScatter(
+  seurat_obj,
+  feature1 = "nCount_RNA",
+  feature2 = "nFeature_RNA"
+)
+
+FeatureScatter(
+  seurat_obj,
+  feature1 = "nCount_RNA",
+  feature2 = "percent.mt"
+)
+
+## =========================
+Step 20: Calculate percentiles for QC metrics
+quantile(
+  seurat_obj$nFeature_RNA,
+  probs = c(0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1)
+)
+quantile(
+  seurat_obj$nCount_RNA,
+  probs = c(0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1)
+)
+quantile(
+  seurat_obj$percent.mt,
+  probs = c(0, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1)
+)
+
+## =========================
+Step 21: Evaluate QC metrics and high-mt cells across conditions
+VlnPlot(
+  seurat_obj,
+  features = "percent.mt",
+  group.by = "condition.l1",
+  pt.size = 0
+)
+VlnPlot(
+  seurat_obj,
+  features = "nFeature_RNA",
+  group.by = "condition.l1",
+  pt.size = 0
+)
+VlnPlot(
+  seurat_obj,
+  features = "nCount_RNA",
+  group.by = "condition.l1",
+  pt.size = 0
+)
+table(
+  seurat_obj$condition.l1,
+  seurat_obj$percent.mt > 20
+)
+prop.table(
+  table(
+    seurat_obj$condition.l1,
+    seurat_obj$percent.mt > 20
+  ),
+  margin = 1
+)
+
+## =========================
+Step 22: Assess mitochondrial content across cell subclasses
+VlnPlot(
+  seurat_obj,
+  features = "percent.mt",
+  group.by = "subclass.l1",
+  pt.size = 0
+)
+
+aggregate(
+  percent.mt ~ subclass.l1,
+  data = seurat_obj@meta.data,
+  FUN = median
+)
+aggregate(
+  percent.mt ~ subclass.l1,
+  data = seurat_obj@meta.data,
+  FUN = mean
+)
+
+
+table(
+  seurat_obj$subclass.l1,
+  seurat_obj$percent.mt > 20
+)
+prop.table(
+  table(
+    seurat_obj$subclass.l1,
+    seurat_obj$percent.mt > 20
+  ),
+  margin = 1
+)
+
+## =========================
+Step 22: Confirm which layers are in Seurat object 
+Layers(seurat_obj[["RNA"]])
+slotNames(seurat_obj[["RNA"]])
+DefaultAssay(seurat_obj)
+summary(
+  LayerData(
+    seurat_obj,
+    assay = "RNA",
+    layer = "counts"
+  )@x
+)
+
+## =========================
+Step 23: Normalization and Verify normalized data layer
+seurat_obj <- NormalizeData(
+    seurat_obj,
+    normalization.method = "LogNormalize",
+    scale.factor = 10000,
+    verbose = TRUE
+)
+
+Layers(seurat_obj[["RNA"]])
+
+## =========================
+Step 24: Identify highly variable features (HVGs)
+seurat_obj <- FindVariableFeatures(
+    seurat_obj,
+    selection.method = "vst",
+    nfeatures = 2000,
+    verbose = TRUE
+)
+length(VariableFeatures(seurat_obj))
+
+head(VariableFeatures(seurat_obj), 20)
+
+VariableFeaturePlot(seurat_obj)
+
+## =========================
+Step 25: Scale data on variable features and Confirm
+seurat_obj <- ScaleData(
+  seurat_obj,
+  features = VariableFeatures(seurat_obj),
+  verbose = TRUE
+)
+
+Layers(seurat_obj[["RNA"]])
+
+## =========================
+Step 26: PCA
+seurat_obj <- RunPCA(
+    seurat_obj,
+    features = VariableFeatures(seurat_obj),
+    npcs = 50,
+    verbose = TRUE
+)
+
+## =========================
+Step 27: Generate PCA Elbow plot
+ElbowPlot(
+    seurat_obj,
+    ndims = 50
+)
+
+## =========================
+Step 28: Compute nearest neighbor 
+seurat_obj <- FindNeighbors(
+    seurat_obj,
+    dims = 1:30,
+    verbose = TRUE
+)
+
+## =========================
+Step 29: Perform preliminary graph-based clustering
+seurat_obj <- FindClusters(
+    seurat_obj,
+    resolution = 0.2,
+    verbose = TRUE
+)
+table(Idents(seurat_obj))
+
+## =========================
+Step 30: Run and Plot UMAP  
+seurat_obj <- RunUMAP(
+    seurat_obj,
+    dims = 1:30,
+    verbose = TRUE
+)
+
+DimPlot(
+  seurat_obj,
+  reduction = "umap"
+) 
+
+## =========================
+Step 31: Re-cluster cells and check cluster counts
+seurat_obj <- FindClusters(
+  seurat_obj,
+  resolution = 0.2,
+  verbose = TRUE
+)
+table(Idents(seurat_obj))
+
+## =========================
+Step 32: Generate a labeled UMAP diagram based on clustering
+DimPlot(
+  seurat_obj,
+  reduction = "umap",
+  group.by = "seurat_clusters",
+  label = TRUE,
+  repel = TRUE
+)
+
+## =========================
+Step 33: Find marker genes for each cluster
+markers <- FindAllMarkers(
+  seurat_obj,
+  only.pos = TRUE,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  verbose = TRUE
+)
+
+## =========================
+Step 34: Extract the top 25 marker genes from each cluster and Export to CSV
+top25<- markers %>%
+  group_by(cluster) %>%
+  slice_max(
+    order_by = avg_log2FC,
+    n = 25
+  )
+
+View(top25)
+
+write.csv(
+  top25,
+  file = "C:/Users/user/Desktop/Single cell RNA seq analysis/GSE183276/GSE183276_top25_markers_resolution0.2.csv",
+  row.names = FALSE
+)
+
+## =========================
+Step 36: Assign cell type annotations to clusters
+cluster_annotation <- c(
+
+    "TAL",                  # Cluster 0
+    "ICB",                  # Cluster 1
+    "PC",                   # Cluster 2
+    "PT",                   # Cluster 3
+    "TAL",                  # Cluster 4
+    "PT",                   # Cluster 5
+    "Myeloid",              # Cluster 6
+    "NKT",                  # Cluster 7
+    "PT",                   # Cluster 8
+    "EC",                   # Cluster 9
+    "TAL",                  # Cluster 10
+    "ICA",                  # Cluster 11
+    "VSMC/Pericyte/Fib",    # Cluster 12
+    "Collecting duct",      # Cluster 13
+    "EC",                   # Cluster 14
+    "T",                    # Cluster 15
+    "B",                    # Cluster 16
+    "T",                    # Cluster 17
+    "EC",                    # Cluster 18
+    "PEC",                  # Cluster 19
+    "POD",                  # Cluster 20
+    "Cycling cell",         # Cluster 21
+    "Plasma cell"           # Cluster 22
+)
+
+names(cluster_annotation) <- as.character(0:22)
+
+celltype_annotation <- cluster_annotation[
+    as.character(Idents(seurat_obj))
+]
+
+names(celltype_annotation) <- colnames(seurat_obj)
+
+seurat_obj$celltype <- celltype_annotation
+
+## =========================
+Step 37: Set cell type order
+celltype_order <- c(
+    "PT",
+    "TAL",
+    "ICA",
+    "ICB",
+    "Collecting duct",
+    "PC",
+    "POD",
+    "PEC",
+    "EC",
+    "VSMC/Pericyte/Fib",
+    "Myeloid",
+    "NKT",
+    "T",
+    "B",
+    "Plasma cell",
+    "Cycling cell"
+)
+seurat_obj$celltype_ordered <- factor(
+    seurat_obj$celltype,
+    levels = celltype_order
+)
+
+## =========================
+Step 38: Generate UMAP plot for paper
+DimPlot(
+    seurat_obj,
+    reduction = "umap",
+    group.by = "celltype_ordered",
+    label = TRUE,
+    repel = TRUE,
+    raster = TRUE,
+    label.size = 4
+) +
+    theme_void() +
+    theme(
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12),
+        plot.title = element_blank()
+    )
+
+## =========================
+Step 39: Generate DotPlot for IL33 expression in each cell type
+grep(
+    "IL33",
+    rownames(seurat_obj),
+    value = TRUE,
+    ignore.case = TRUE
+)
+
+celltype_order <- c(
+    "PT",
+    "TAL",
+    "ICA",
+    "ICB",
+    "Collecting duct",
+    "PC",
+    "POD",
+    "PEC",
+    "EC",
+    "VSMC/Pericyte/Fib",
+    "Myeloid",
+    "NKT",
+    "T",
+    "B",
+    "Plasma cell",
+    "Cycling cell"
+)
+
+seurat_obj$celltype_ordered <- factor(
+    seurat_obj$celltype,
+    levels = celltype_order
+)
+
+p_IL33 <- DotPlot(
+    seurat_obj,
+    features = "IL33",
+    group.by = "celltype_ordered",
+    dot.scale = 6
+) +
+    scale_y_discrete(
+        limits = rev(celltype_order)
+    ) +
+    scale_x_discrete(
+        labels = "IL33"
+    ) +
+    scale_color_gradientn(
+        colors = c(
+            "#D9D9D9",
+            "#9B7FD3",
+            "#0000FF"
+        )
+    ) +
+    labs(
+        x = NULL,
+        y = NULL,
+        color = "Average Expression",
+        size = "Percent Expressed"
+    ) +
+    guides(
+        size = guide_legend(order = 2),
+        color = guide_colorbar(order = 1)
+    ) +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(size = 13),
+        axis.text.y = element_text(size = 13),
+        axis.title = element_blank(),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 13),
+        legend.position = "right"
+    )
+
+p_IL33
+
+## =========================
+Step 40: Generate DotPlot of IL33 across conditions in target lineages
+# IL33 expression in EC and VSMC/Pericyte/Fib
+# Ref / AKI / CKD
+# Custom ggplot2 DotPlot
+
+# ------------------------------------------------------------
+1. Select EC and VSMC/Pericyte/Fib
+# ------------------------------------------------------------
+seurat_IL33_EC_VSMC <- subset(
+    seurat_obj,
+    subset = celltype %in% c(
+        "EC",
+        "VSMC/Pericyte/Fib"
+    )
+)
+
+
+# ------------------------------------------------------------
+# 2. Create celltype × condition group
+# ------------------------------------------------------------
+
+seurat_IL33_EC_VSMC$celltype_condition <- paste(
+    seurat_IL33_EC_VSMC$celltype,
+    seurat_IL33_EC_VSMC$condition.l1,
+    sep = "_"
+)
+
+
+# ------------------------------------------------------------
+# 3. Generate DotPlot data
+# ------------------------------------------------------------
+
+dot_data <- DotPlot(
+    seurat_IL33_EC_VSMC,
+    features = "IL33",
+    group.by = "celltype_condition"
+)$data
+
+
+# ------------------------------------------------------------
+# 4. Extract condition and cell type
+# ------------------------------------------------------------
+
+dot_data$condition <- sub(
+    ".*_(Ref|AKI|CKD)$",
+    "\\1",
+    dot_data$id
+)
+
+dot_data$celltype <- sub(
+    "_(Ref|AKI|CKD)$",
+    "",
+    dot_data$id
+)
+
+
+# ------------------------------------------------------------
+# 5. Set order
+# ------------------------------------------------------------
+
+dot_data$condition <- factor(
+    dot_data$condition,
+    levels = c(
+        "Ref",
+        "AKI",
+        "CKD"
+    )
+)
+
+dot_data$celltype <- factor(
+    dot_data$celltype,
+    levels = c(
+        "EC",
+        "VSMC/Pericyte/Fib"
+    )
+)
+
+
+# ------------------------------------------------------------
+# 6. Display labels
+# ------------------------------------------------------------
+
+dot_data$celltype_label <- factor(
+    dot_data$celltype,
+    levels = c(
+        "VSMC/Pericyte/Fib",
+        "EC"
+    ),
+    labels = c(
+        "VSMC/Pericyte/Fib",
+        "EC"
+    )
+)
+
+# ------------------------------------------------------------
+# 7. Draw plot
+# ------------------------------------------------------------
+
+p_IL33_EC_VSMC <- ggplot(
+    dot_data,
+    aes(
+        x = condition,
+        y = celltype_label
+    )
+) +
+    
+    geom_point(
+        aes(
+            size = pct.exp,
+            color = avg.exp
+        )
+    ) +
+    
+    # Average Expression
+    scale_color_gradientn(
+        colors = c(
+            "#D9D9D9",
+            "#9B7FD3",
+            "#0000FF"
+        ),
+        name = "Average Expression"
+    ) +
+    
+    # Percent Expressed
+    scale_size_continuous(
+        name = "Percent Expressed",
+        range = c(
+            1.5,
+            8
+        )
+    ) +
+    
+    labs(
+        title = "IL33 Expression",
+        x = NULL,
+        y = NULL
+    ) +
+    
+    # ========================================================
+    # Average Expression = TOP
+    # Percent Expressed  = BOTTOM
+    # ========================================================
+    
+    guides(
+        color = guide_colorbar(
+            order = 1
+        ),
+        size = guide_legend(
+            order = 2
+        )
+    ) +
+    
+    theme_classic() +
+    
+    theme(
+        plot.title = element_text(
+            size = 16,
+            face = "bold",
+            hjust = 0.5
+        ),
+        
+        axis.text.x = element_text(
+            size = 13,
+            color = "black"
+        ),
+        
+        axis.text.y = element_text(
+            size = 13,
+            color = "black"
+        ),
+        
+        axis.title = element_blank(),
+        
+        legend.title = element_text(
+            size = 12
+        ),
+        
+        legend.text = element_text(
+            size = 13
+        ),
+        
+        legend.position = "right"
+    )
+
+# ------------------------------------------------------------
+# 8. Display
+# ------------------------------------------------------------
+
+p_IL33_EC_VSMC
+
